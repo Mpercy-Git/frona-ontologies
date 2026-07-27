@@ -1,0 +1,21 @@
+name = "dublincore"
+version = "2020-01-20"
+upstream = "https://www.dublincore.org/specifications/dublin-core/dcmi-terms/"
+license = "CC BY 4.0"
+attribution = "Dublin Core Metadata Initiative"
+
+[[files]]
+url = "https://www.dublincore.org/specifications/dublin-core/dcmi-terms/dublin_core_terms.ttl"
+as_file = "dublincore.ttl"
+
+
+# KBpedia's alignment tables. Vetted against the assembled catalogue at build time;
+# rows that would make a term unsatisfiable are refused.
+
+[[linkages]]
+url = "https://raw.githubusercontent.com/KBpedia/kbpedia/master/versions/2.50/linkages/dc.csv"
+as_file = "linkage-dc.csv"
+
+[build]
+wordnet_noun_filter = false
+emit_labels = true

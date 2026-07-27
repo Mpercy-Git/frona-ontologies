@@ -1,0 +1,130 @@
+[tools]
+rust = "1.95.0"
+# `inspect` reads metadata.json. jq is listed so the task works on a clean checkout
+# rather than failing on a machine that happens not to have it.
+jq = "1.8.2"
+
+[tasks.build]
+description = "Build every source into dist/"
+# Artifacts are published from this task, so nothing unformatted gets that far.
+depends = ["fmt:check"]
+run = "cargo run --release -- build"
+
+[tasks."build:one"]
+description = "Build a single source"
+depends = ["fmt:check"]
+usage = 'arg "<source>" help="Recipe name, e.g. kbpedia" default="kbpedia"'
+run = "cargo run --release -- build --source $usage_source"
+
+[tasks.test]
+description = "Run the build guards"
+run = "cargo test --release"
+
+[tasks.fmt]
+description = "Format"
+run = "cargo fmt"
+
+[tasks."fmt:check"]
+description = "Fail if anything is unformatted"
+run = "cargo fmt --check"
+
+[tasks.lint]
+description = "rustfmt then clippy, warnings denied"
+depends = ["fmt:check"]
+run = "cargo clippy --release --all-targets -- -D warnings"
+
+[tasks.check]
+description = "Type-check without building"
+run = "cargo check --all-targets"
+
+[tasks.verify]
+description = "What CI runs before a release: guards, lint, build, then check the output"
+depends = ["test", "lint", "build"]
+run = """
+mise run verify:artifacts
+mise run verify:reasoner
+mise run verify:e2e
+"""
+
+[tasks."verify:reasoner"]
+description = "Assert the graph extractor agrees exactly with the OWL 2 RL reasoner (needs a build)"
+run = "cargo test --release --test equivalent_to_reasoner -- --ignored --nocapture"
+
+[tasks."verify:e2e"]
+description = "Sample 1000 classes: reason over each projection vs the whole catalogue (needs a build)"
+run = "cargo test --release --test projection_e2e -- --ignored --nocapture"
+
+[tasks."verify:artifacts"]
+description = "Cross-check metadata.json against the upstream sources and dist/ (needs a build)"
+run = "cargo test --release --test verify_artifacts -- --ignored --nocapture"
+
+[tasks.inspect]
+quiet = true
+description = "Summarise the last build — counts, sizes, licences"
+run = '''
+test -f dist/metadata.json || { echo "no build yet — run: mise run build" >&2; exit 1; }
+{
+  printf 'source\tversion\tclasses\tprops\tdisjoint\ttriples\tKB\tlicence\n'
+  jq -r '.sources[] | [.name, .version, .classes, .properties, .disjoint_pairs,
+                       .artifact.triples, (.artifact.bytes/1024|floor), .license]
+                    | @tsv' dist/metadata.json
+} | column -t -s "$(printf '\t')"
+'''
+
+[tasks.diff]
+quiet = true
+description = "Show what the build did to one term: upstream vs artifact, in Turtle"
+usage = '''
+arg "<source>" help="Ontology name, e.g. kbpedia"
+arg "<term>" help="Local name, IRI or label, e.g. Doctor-Medical or doctor"
+'''
+run = "cargo run --release --quiet -- diff $usage_source $usage_term"
+
+[tasks.project]
+description = "Cut the subgraph a consumer would reason over, and report what it costs"
+# The report is the output; mise echoing the script above it is noise.
+quiet = true
+usage = '''
+arg "<term>" help="Seed, e.g. Doctor-Medical (local name, IRI or label)" var=#true
+flag "--reasoner" help="Cross-check the cut against the OWL 2 RL reasoner"
+flag "--baseline" help="Also materialise the WHOLE catalogue, for comparison"
+flag "--ttl" help="Print the cut subgraph as Turtle"
+'''
+run = '''
+extra=""
+[ "$usage_reasoner" = "true" ] && extra="$extra --reasoner"
+[ "$usage_baseline" = "true" ] && extra="$extra --baseline"
+[ "$usage_ttl" = "true" ]      && extra="$extra --ttl"
+cargo run --release --quiet -- project $usage_term $extra
+'''
+
+[tasks.show]
+quiet = true
+description = "Print one term from a built ontology, as emitted"
+usage = '''
+arg "<source>" help="Ontology name, e.g. kbpedia"
+arg "<term>" help="Local name, e.g. Doctor-Medical"
+'''
+run = '''
+test -f "dist/$usage_source.ttl.gz" || { echo "dist/$usage_source.ttl.gz not built" >&2; exit 1; }
+gunzip -c "dist/$usage_source.ttl.gz" |
+  awk -v t="$usage_term" '$1 ~ ":"t"$" {p=1} p {print} p && /\.$/ {exit}'
+'''
+
+[tasks.wordnet]
+description = "Regenerate the vendored part-of-speech index from a WordNet TTL (rare)"
+usage = 'arg "<wordnet_ttl>" help="Path to english-wordnet-YYYY.ttl (~202 MB)"'
+run = "cargo run --release -- wordnet $usage_wordnet_ttl"
+
+[tasks.clean]
+description = "Remove build output, keeping the download cache"
+# The cache lives at target/cache, so this cannot just be `cargo clean` — it clears every
+# other thing under target/ and leaves the ~40 MB of pinned downloads alone.
+run = '''
+rm -rf dist
+find target -mindepth 1 -maxdepth 1 ! -name cache -exec rm -rf {} +
+'''
+
+[tasks."clean:all"]
+description = "Also drop the download cache, forcing a re-fetch of ~40 MB"
+run = "rm -rf dist target"

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fronalabs/frona-ontologies/schema/metadata.v1.schema.json",
+  "title": "frona-ontologies release metadata",
+  "type": "object",
+  "required": ["schema_version", "sources"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_at": {
+      "type": "string",
+      "description": "SOURCE_DATE_EPOCH if set, else 'unset'. Deliberately not a wall clock: identical inputs must produce identical artifacts so a release can tell 'changed' from 'rebuilt'."
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version", "upstream", "license", "attribution", "artifact"],
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string", "description": "Pinned upstream version." },
+          "upstream": { "type": "string", "format": "uri" },
+          "license": { "type": "string", "description": "Upstream licence. Artifacts are derived works and carry it." },
+          "attribution": { "type": "string", "description": "Text CC-BY obliges a consumer to reproduce." },
+          "classes": { "type": "integer", "minimum": 0 },
+          "properties": { "type": "integer", "minimum": 0 },
+          "disjoint_pairs": { "type": "integer", "minimum": 0 },
+          "artifact": {
+            "type": "object",
+            "description": "The source's ontology, one gzipped Turtle file.",
+            "required": ["name", "bytes", "bytes_uncompressed", "triples", "content_sha256"],
+            "properties": {
+              "name": { "type": "string", "examples": ["kbpedia.ttl.gz"] },
+              "bytes": { "type": "integer", "description": "Compressed size on disk." },
+              "bytes_uncompressed": { "type": "integer" },
+              "triples": { "type": "integer" },
+              "content_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+                "description": "Over the UNCOMPRESSED bytes — gzip embeds a timestamp, so hashing the archive would change on every run."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

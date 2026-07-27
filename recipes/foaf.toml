@@ -1,0 +1,21 @@
+name = "foaf"
+version = "0.99"
+upstream = "http://xmlns.com/foaf/spec/"
+license = "CC BY 1.0"
+attribution = "FOAF project, Dan Brickley and Libby Miller"
+
+[[files]]
+url = "http://xmlns.com/foaf/spec/index.rdf"
+as_file = "foaf.rdf"
+
+
+# KBpedia's alignment tables. Vetted against the assembled catalogue at build time;
+# rows that would make a term unsatisfiable are refused.
+
+[[linkages]]
+url = "https://raw.githubusercontent.com/KBpedia/kbpedia/master/versions/2.50/linkages/foaf.csv"
+as_file = "linkage-foaf.csv"
+
+[build]
+wordnet_noun_filter = false
+emit_labels = true

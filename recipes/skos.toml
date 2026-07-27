@@ -1,0 +1,13 @@
+name = "skos"
+version = "2009-08-18"
+upstream = "https://www.w3.org/TR/skos-reference/"
+license = "W3C Document Licence"
+attribution = "W3C SKOS Working Group"
+
+[[files]]
+url = "https://www.w3.org/2009/08/skos-reference/skos.rdf"
+as_file = "skos.rdf"
+
+[build]
+wordnet_noun_filter = false
+emit_labels = true

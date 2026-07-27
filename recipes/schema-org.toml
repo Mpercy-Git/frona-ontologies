@@ -1,0 +1,26 @@
+name = "schema-org"
+version = "v30.0"
+upstream = "https://schema.org"
+license = "CC BY-SA 3.0"
+attribution = "schema.org, W3C Schema.org Community Group"
+
+# The property vocabulary. KBpedia supplies types but no usable relations — its ~2,000
+# property declarations are typology tags with owl:Thing domains — so schema.org's 1,676
+# property names are what the PKM actually records attributes and relations with.
+[[files]]
+url = "https://schema.org/version/30.0/schemaorg-current-https.ttl"
+as_file = "schemaorg.ttl"
+
+
+# KBpedia's alignment tables. Vetted against the assembled catalogue at build time;
+# rows that would make a term unsatisfiable are refused.
+
+[[linkages]]
+url = "https://raw.githubusercontent.com/KBpedia/kbpedia/master/versions/2.50/linkages/schema.org.csv"
+as_file = "linkage-schema.org.csv"
+
+[build]
+# Curated and small: every term is wanted, and its names are not WordNet lemmas
+# (`domainIncludes`, `AdministrativeArea`) so the noun filter would gut it.
+wordnet_noun_filter = false
+emit_labels = true

@@ -1,0 +1,64 @@
+name = "kbpedia"
+version = "2.50"
+upstream = "https://github.com/KBpedia/kbpedia"
+license = "CC BY 4.0"
+attribution = "KBpedia (http://kbpedia.org/), Cognonto Corporation; editors Michael K. Bergman and Frédérick Giasson"
+
+# Pinned at 2.50 (Feb 2020) — KBpedia's content has not changed since. Moving it is a
+# deliberate edit here, reviewed against the disjointness count and coverage probe below.
+#
+# KKO is the 226-class upper layer that carries the disjointness; the reference concepts
+# are the 58k-term vocabulary beneath it. Both are needed: the axioms live in KKO but
+# only bite once RC terms hang off it.
+[[files]]
+url = "https://raw.githubusercontent.com/KBpedia/kbpedia/master/versions/2.50/kko.n3"
+as_file = "kko.n3"
+
+[[files]]
+url = "https://github.com/KBpedia/kbpedia/raw/master/versions/2.50/kbpedia_reference_concepts.zip"
+as_file = "kbpedia_reference_concepts.n3"
+unzip = true
+
+
+
+
+# KBpedia's alignment tables. Vetted against the assembled catalogue at build time;
+# rows that would make a term unsatisfiable are refused.
+
+[[linkages]]
+url = "https://raw.githubusercontent.com/KBpedia/kbpedia/master/versions/2.50/linkages/schema.org.csv"
+as_file = "linkage-schema.org.csv"
+
+[[linkages]]
+url = "https://raw.githubusercontent.com/KBpedia/kbpedia/master/versions/2.50/linkages/dc.csv"
+as_file = "linkage-dc.csv"
+
+[[linkages]]
+url = "https://raw.githubusercontent.com/KBpedia/kbpedia/master/versions/2.50/linkages/foaf.csv"
+as_file = "linkage-foaf.csv"
+
+# The seed test needs a part-of-speech lookup. Fetched and reduced at build time rather
+# than committed: 18 MB down, 662 KB out, byte-identical every run — and its licence
+# reaches NOTICE through the same path as an ontology's.
+[wordnet]
+url = "https://github.com/globalwordnet/english-wordnet/releases/download/2024-edition/english-wordnet-2024.ttl.gz"
+as_file = "english-wordnet-2024.ttl.gz"
+license = "CC BY 4.0, and the Princeton WordNet License"
+attribution = "Princeton University WordNet; the Open English WordNet team"
+
+[build]
+# KBpedia is a general-knowledge vocabulary derived from seven knowledge bases, so it
+# carries a long tail of compositional coinages. The noun filter removes them at zero
+# measured coverage cost (63,180 → 22,327 seeds, closed upward to 27,586 terms; probe
+# unchanged at 52/75).
+wordnet_noun_filter = true
+emit_labels = true
+
+# The 646 pairs come from decomposing 54 `disjointWith [ unionOf (…) ]` expressions.
+# A reader that only accepts <iri> objects produces ZERO of them, with no error and a
+# plausible-looking output file. This assertion is the only thing that catches that.
+expect_disjoint_pairs = 646
+
+# Floor, not a target. Measured at 52; a filter change that drops below 45 has broken
+# something and should fail the build rather than quietly ship a thinner vocabulary.
+expect_min_probe_hits = 45

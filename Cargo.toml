@@ -1,0 +1,68 @@
+[package]
+name = "frona-ontologies"
+version = "0.1.0"
+edition = "2024"
+description = "Prepares published ontologies into small artifacts, and answers subsumption and disjointness over them without materialising"
+license = "MIT"
+
+[[bin]]
+name = "ont"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+
+# Everything that builds and inspects artifacts: fetching, emitting, the reasoner
+# cross-check, terminal output. A *consumer* of the artifacts wants none of it — it only
+# wants `graph` and `rdf`, which is why this is a feature and not the whole crate.
+#
+# `frona-server` depends on this crate with `default-features = false` so the extractor is
+# shared rather than reimplemented, without dragging an HTTP client and an OWL reasoner
+# into a server binary. The correctness contract that makes the extractor safe to rely on
+# (`tests/equivalent_to_reasoner.rs`) lives here and runs in this repo's CI, so the server
+# inherits a walk that is *proven* equal to OWL 2 RL rather than one that looks right.
+cli = [
+    "dep:ureq",
+    "dep:sha2",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:toml",
+    "dep:reasonable",
+    "dep:libc",
+    "dep:owo-colors",
+    "dep:csv",
+]
+
+[dependencies]
+# Reads every format the sources publish (Turtle, N-Triples, N3, RDF/XML) and
+# streams — never materialising a file into an indexed store just to iterate it.
+# Shared with frona-server, so the same term model crosses the boundary with no conversion.
+oxigraph = { version = "0.5", default-features = false }
+oxrdf = "0.3"
+# Artifacts and the vendored WordNet index are both gzipped.
+flate2 = "1"
+anyhow = "1"
+
+ureq = { version = "3", features = ["rustls"], optional = true }
+sha2 = { version = "0.11", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+toml = { version = "1", optional = true }
+
+# `project --reasoner` and the equivalence contract materialise a graph to check the walk
+# against. Same reasoner the server runs, so the comparison means something there.
+reasonable = { version = "0.4", optional = true }
+# getrusage, for peak RSS. There is no std API for it.
+libc = { version = "0.2", optional = true }
+# Terminal colour. The `supports-colors` feature is the reason for the dependency:
+# NO_COLOR, CLICOLOR_FORCE, dumb terminals and Windows consoles are a longer matrix than
+# an IsTerminal check, and getting it wrong puts escape codes in a redirected file.
+owo-colors = { version = "4.3.0", features = ["supports-colors"], optional = true }
+csv = { version = "1.4.0", optional = true }
+
+[dev-dependencies]
+toml = "1"
+
+[profile.release]
+opt-level = 3

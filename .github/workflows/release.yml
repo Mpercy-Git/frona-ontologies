@@ -1,0 +1,65 @@
+name: release
+
+# Manual only. These sources are effectively frozen — KBpedia has not changed since
+# Feb 2020 — so a schedule would be a no-op that runs forever. A release happens because
+# a recipe changed and someone decided to publish it.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and check, but publish nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Toolchain comes from mise.toml, so CI and a developer's machine build with the
+      # same rustc. `@stable` here would drift from the pinned version the moment one
+      # released, and an output difference traced to a compiler is not a debugging
+      # session anyone wants.
+      - uses: jdx/mise-action@v3
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format and lint
+        run: mise run lint
+
+      # Before anything is fetched: a broken decomposition should fail here, not after
+      # downloading 40 MB and emitting a plausible-looking release.
+      - name: Guards
+        run: mise run test
+
+      - name: Build artifacts
+        run: mise run build
+
+      - name: Summary
+        run: |
+          {
+            echo '### Artifacts'
+            echo '```'
+            find dist -type f | sort | while read -r f; do
+              printf '%-44s %6s KB\n' "${f#dist/}" "$(( $(wc -c < "$f") / 1024 ))"
+            done
+            echo '```'
+            echo '### Sources'
+            jq -r '.sources[] | "- **\(.name)** \(.version) — \(.classes) classes, \(.properties) properties, \(.disjoint_pairs) disjoint (\(.license))"' dist/metadata.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="ont-$(date -u +%Y%m%dT%H%M%SZ)"
+          gh release create "$TAG" dist/*.ttl.gz dist/metadata.json dist/NOTICE \
+            --title "$TAG" \
+            --notes "Distilled ontology artifacts. See metadata.json for per-source counts, licences and checksums; NOTICE for required attribution.
+
+          Consume a pinned tag rather than \`latest\` — reasoning output should not change because a release was cut."

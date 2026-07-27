@@ -1,0 +1,35 @@
+# The construct KBpedia states all of its disjointness with, in miniature.
+#
+# `X disjointWith [ owl:unionOf (A B C) ]` is logically equivalent to X⊥A, X⊥B, X⊥C.
+# The whole `unionOf`/`rdf:first`/`rdf:rest` chain is blank-node-subjected, so a reader
+# that only accepts `<iri>` subjects — or that transposes first/rest — silently yields
+# ZERO pairs and a plausible-looking output file. That is the failure this fixture exists
+# to catch.
+
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ex:   <http://example.org/> .
+
+ex:Agent       a owl:Class .
+ex:Document    a owl:Class .
+ex:Event       a owl:Class .
+ex:Place       a owl:Class .
+ex:Person      a owl:Class ; rdfs:subClassOf ex:Agent .
+
+# One expression, three implied pairs.
+ex:Agent owl:disjointWith [ owl:unionOf ( ex:Document ex:Event ex:Place ) ] .
+
+# A plain named pair alongside, which must survive untouched.
+ex:Document owl:disjointWith ex:Place .
+
+# An anonymous class used as a range — the shape SKOS states `skos:member` with. It is
+# typed `owl:Class`, so a count that scans type declarations reports a class that is
+# never emitted: metadata advertised 5 classes for a SKOS file containing 4.
+ex:member a owl:ObjectProperty ;
+    rdfs:domain ex:Document ;
+    rdfs:range  [ a owl:Class ; owl:unionOf ( ex:Person ex:Agent ) ] .
+
+# A restated relation. FOAF states `foaf:familyName rdfs:domain foaf:Person` twice; Turtle
+# output collapses the repeat, so a triple count taken from input list lengths advertises
+# two triples the file does not contain.
+ex:Person rdfs:subClassOf ex:Agent .

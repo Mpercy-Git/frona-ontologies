@@ -1,0 +1,8 @@
+# Build output. Also holds the download cache at target/cache, so `cargo clean` clears
+# everything the build owns — at the cost of re-fetching ~40 MB next time.
+/target
+/dist
+
+# Personal mise overrides — tool versions, scratch tasks.
+mise.local.toml
+.mise.local.toml

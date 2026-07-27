@@ -1,0 +1,5 @@
+# Stock rustfmt breaks chains and calls at 60% of max_width, so an 88-character line that
+# fits comfortably gets exploded across five lines. "Max" raises those sub-limits to
+# max_width, which is how this code is already written.
+use_small_heuristics = "Max"
+max_width = 100
