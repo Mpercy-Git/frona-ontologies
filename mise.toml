@@ -1,5 +1,8 @@
 [tools]
-rust = "1.95.0"
+# `components` is required: mise provisions a minimal toolchain, so `cargo fmt` and
+# `cargo clippy` are absent on a clean runner even though they are present on a developer
+# machine whose rustup installed them long ago.
+rust = { version = "1.95.0", components = "rustfmt,clippy" }
 # `inspect` reads metadata.json. jq is listed so the task works on a clean checkout
 # rather than failing on a machine that happens not to have it.
 jq = "1.8.2"
