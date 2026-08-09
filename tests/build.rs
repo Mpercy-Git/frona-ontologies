@@ -107,16 +107,22 @@ fn schema_includes_remain_advisory_in_the_emitted_artifact() {
         assert!(has(location, "https://schema.org/rangeIncludes", range), "{ttl}");
         assert!(!has(location, "http://www.w3.org/2000/01/rdf-schema#range", range), "{ttl}");
     }
-    assert!(has(
-        "http://example.org/strictLocation",
-        "http://www.w3.org/2000/01/rdf-schema#domain",
-        "http://example.org/Person",
-    ), "{ttl}");
-    assert!(has(
-        "http://example.org/strictLocation",
-        "http://www.w3.org/2000/01/rdf-schema#range",
-        "http://example.org/Place",
-    ), "{ttl}");
+    assert!(
+        has(
+            "http://example.org/strictLocation",
+            "http://www.w3.org/2000/01/rdf-schema#domain",
+            "http://example.org/Person",
+        ),
+        "{ttl}"
+    );
+    assert!(
+        has(
+            "http://example.org/strictLocation",
+            "http://www.w3.org/2000/01/rdf-schema#range",
+            "http://example.org/Place",
+        ),
+        "{ttl}"
+    );
 }
 
 /// `metadata.json` is a published artifact — its counts must be the counts of terms in
