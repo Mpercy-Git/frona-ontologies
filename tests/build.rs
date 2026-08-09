@@ -63,6 +63,62 @@ fn emitted_artifacts_contain_no_blank_nodes() {
     assert!(!ttl.contains("_:"), "emitted ontology leaked a blank node:\n{ttl}");
 }
 
+/// Schema.org's `domainIncludes` and `rangeIncludes` describe alternative intended
+/// usages. They are advisory metadata, not RDFS constraints: lowering them to
+/// `rdfs:domain`/`rdfs:range` makes every alternative conjunctive and changes the
+/// vocabulary's meaning. Genuine RDFS constraints must remain strict alongside them.
+#[test]
+fn schema_includes_remain_advisory_in_the_emitted_artifact() {
+    let input = br#"
+        @prefix ex: <http://example.org/> .
+        @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        @prefix schema: <https://schema.org/> .
+
+        schema:location a rdf:Property ;
+            schema:domainIncludes ex:Action, ex:Event ;
+            schema:rangeIncludes ex:Place, ex:Text .
+
+        ex:strictLocation a rdf:Property ;
+            rdfs:domain ex:Person ;
+            rdfs:range ex:Place .
+    "#;
+    let mut g = Graph::default();
+    g.absorb_bytes(input, RdfFormat::Turtle).expect("parse fixture");
+    let (ttl, _) = emit::turtle(&g, &fixture_recipe());
+    let triples = RdfParser::from_format(RdfFormat::Turtle)
+        .for_reader(ttl.as_bytes())
+        .collect::<Result<Vec<_>, _>>()
+        .expect("emitted Turtle must re-parse");
+    let has = |subject: &str, predicate: &str, object: &str| {
+        triples.iter().any(|triple| {
+            triple.subject.to_string() == format!("<{subject}>")
+                && triple.predicate.as_str() == predicate
+                && triple.object.to_string() == format!("<{object}>")
+        })
+    };
+
+    let location = "https://schema.org/location";
+    for domain in ["http://example.org/Action", "http://example.org/Event"] {
+        assert!(has(location, "https://schema.org/domainIncludes", domain), "{ttl}");
+        assert!(!has(location, "http://www.w3.org/2000/01/rdf-schema#domain", domain), "{ttl}");
+    }
+    for range in ["http://example.org/Place", "http://example.org/Text"] {
+        assert!(has(location, "https://schema.org/rangeIncludes", range), "{ttl}");
+        assert!(!has(location, "http://www.w3.org/2000/01/rdf-schema#range", range), "{ttl}");
+    }
+    assert!(has(
+        "http://example.org/strictLocation",
+        "http://www.w3.org/2000/01/rdf-schema#domain",
+        "http://example.org/Person",
+    ), "{ttl}");
+    assert!(has(
+        "http://example.org/strictLocation",
+        "http://www.w3.org/2000/01/rdf-schema#range",
+        "http://example.org/Place",
+    ), "{ttl}");
+}
+
 /// `metadata.json` is a published artifact — its counts must be the counts of terms in
 /// the file beside it. They diverged once: `classes()` scanned type declarations directly
 /// and so counted anonymous classes, which `declared()` correctly refuses to emit. SKOS

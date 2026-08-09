@@ -140,8 +140,12 @@ impl Prefixes {
         };
         for id in g.declared() {
             note(g.iri(id), &mut namespaces);
-            for &p in
-                g.sup[id as usize].iter().chain(&g.domain[id as usize]).chain(&g.range[id as usize])
+            for &p in g.sup[id as usize]
+                .iter()
+                .chain(&g.domain[id as usize])
+                .chain(&g.range[id as usize])
+                .chain(&g.domain_includes[id as usize])
+                .chain(&g.range_includes[id as usize])
             {
                 note(g.iri(p), &mut namespaces);
             }
@@ -270,6 +274,8 @@ pub fn turtle(g: &Graph, r: &Recipe) -> (String, usize) {
         add(rel, &g.sup[i], &mut clauses, &mut triples);
         add(P_DOMAIN, &g.domain[i], &mut clauses, &mut triples);
         add(P_RANGE, &g.range[i], &mut clauses, &mut triples);
+        add(P_DOMAIN_INCLUDES, &g.domain_includes[i], &mut clauses, &mut triples);
+        add(P_RANGE_INCLUDES, &g.range_includes[i], &mut clauses, &mut triples);
 
         // Only the lower-sorting end writes a symmetric axiom — *unless* the other end is
         // not a term this file declares, in which case it never gets a turn and the axiom

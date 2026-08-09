@@ -57,8 +57,13 @@ pub struct Graph {
     /// `rdfs:subClassOf` for classes ∪ `rdfs:subPropertyOf` for properties — one upward
     /// walk serves both.
     pub sup: Vec<Vec<Id>>,
+    /// Strict RDFS constraints. Multiple values are conjunctive.
     pub domain: Vec<Vec<Id>>,
     pub range: Vec<Vec<Id>>,
+    /// Schema.org advisory usage hints. Multiple values are alternatives and must not
+    /// participate in RDFS/OWL reasoning.
+    pub domain_includes: Vec<Vec<Id>>,
+    pub range_includes: Vec<Vec<Id>>,
     pub disjoint: BTreeSet<(Id, Id)>,
     pub equivalent: BTreeSet<(Id, Id)>,
     pub inverse: Vec<(Id, Id)>,
@@ -99,6 +104,8 @@ impl Graph {
         self.sup.push(Vec::new());
         self.domain.push(Vec::new());
         self.range.push(Vec::new());
+        self.domain_includes.push(Vec::new());
+        self.range_includes.push(Vec::new());
         self.lookup.entry(h).or_default().push(id);
         id
     }
@@ -213,8 +220,10 @@ impl Graph {
         }
         match p {
             P_SUBCLASS | P_SUBPROP if named => self.sup[s as usize].push(o),
-            P_DOMAIN | P_DOMAIN_INCLUDES if named => self.domain[s as usize].push(o),
-            P_RANGE | P_RANGE_INCLUDES if named => self.range[s as usize].push(o),
+            P_DOMAIN if named => self.domain[s as usize].push(o),
+            P_RANGE if named => self.range[s as usize].push(o),
+            P_DOMAIN_INCLUDES if named => self.domain_includes[s as usize].push(o),
+            P_RANGE_INCLUDES if named => self.range_includes[s as usize].push(o),
             P_INVERSE if named => self.inverse.push((s, o)),
             P_DISJOINT => self.raw_disjoint.push((s, o)),
             P_EQ_CLASS | P_EQ_PROP if named => {
@@ -526,10 +535,14 @@ impl Graph {
                 self.sup[i].clear();
                 self.domain[i].clear();
                 self.range[i].clear();
+                self.domain_includes[i].clear();
+                self.range_includes[i].clear();
             } else {
                 self.sup[i] = reduced.get(&id).cloned().unwrap_or_default();
                 self.domain[i].retain(|d| keep.contains(d));
                 self.range[i].retain(|r| keep.contains(r));
+                self.domain_includes[i].retain(|d| keep.contains(d));
+                self.range_includes[i].retain(|r| keep.contains(r));
             }
         }
         self.disjoint.retain(|(a, b)| keep.contains(a) && keep.contains(b));
