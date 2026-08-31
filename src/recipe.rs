@@ -137,13 +137,19 @@ impl Recipe {
                 .limit(256 * 1024 * 1024)
                 .read_to_vec()
                 .with_context(|| format!("read body of {}", f.url))?;
-            if f.unzip {
-                let mut zip =
-                    zip_single_member(&body).with_context(|| format!("unzip {}", f.as_file))?;
-                std::fs::write(&dest, &mut zip)?;
+            let content = if f.unzip {
+                zip_single_member(&body).with_context(|| format!("unzip {}", f.as_file))?
             } else {
-                std::fs::write(&dest, &body)?;
-            }
+                body
+            };
+            // Written beside the target and renamed, never straight to `dest`: a fetch
+            // interrupted midway would otherwise leave a truncated file that `exists()`
+            // treats as cached and never fetches again, so the next build parses half a
+            // source and reports whatever that happens to contain.
+            let part = dest.with_file_name(format!("{}.part", f.as_file));
+            std::fs::write(&part, &content).with_context(|| format!("write {}", part.display()))?;
+            std::fs::rename(&part, &dest)
+                .with_context(|| format!("rename {} → {}", part.display(), dest.display()))?;
             out.push(dest);
         }
         Ok(out)
@@ -158,11 +164,22 @@ fn zip_single_member(bytes: &[u8]) -> Result<Vec<u8>> {
         bail!("not a zip archive");
     }
     let method = u16::from_le_bytes([bytes[8], bytes[9]]);
+    let compressed = u32::from_le_bytes([bytes[18], bytes[19], bytes[20], bytes[21]]) as usize;
     let name_len = u16::from_le_bytes([bytes[26], bytes[27]]) as usize;
     let extra_len = u16::from_le_bytes([bytes[28], bytes[29]]) as usize;
     let start = 30 + name_len + extra_len;
-    let data = &bytes[start..];
+    // A short or truncated archive — a proxy's error page, a half-finished download —
+    // otherwise indexes past the end and panics instead of reporting what it got.
+    let data = bytes.get(start..).with_context(|| {
+        format!("zip header claims {start} bytes of preamble, file has {}", bytes.len())
+    })?;
     match method {
+        // Stored: everything after the member is the central directory, so the entry's own
+        // compressed size is what bounds it. Deflate stops on its own end-of-stream marker.
+        0 if compressed > 0 => Ok(data
+            .get(..compressed)
+            .with_context(|| format!("zip entry claims {compressed} bytes, {} follow", data.len()))?
+            .to_vec()),
         0 => Ok(data.to_vec()),
         8 => {
             use std::io::Read;
@@ -171,5 +188,49 @@ fn zip_single_member(bytes: &[u8]) -> Result<Vec<u8>> {
             Ok(out)
         }
         m => bail!("unsupported zip compression method {m}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::zip_single_member;
+
+    /// One stored member, followed by the central directory. Bounding the member by the
+    /// end of the file rather than by its own compressed size appends the directory to the
+    /// extracted bytes — for an `.n3` source that is a parse error at best, and silently
+    /// absorbed junk at worst.
+    fn stored_zip(payload: &[u8], trailer: &[u8]) -> Vec<u8> {
+        let name = b"member.n3";
+        let mut z = Vec::new();
+        z.extend_from_slice(b"PK\x03\x04");
+        z.extend_from_slice(&[0u8; 4]); // version, flags
+        z.extend_from_slice(&0u16.to_le_bytes()); // method: stored
+        z.extend_from_slice(&[0u8; 8]); // time, date, crc
+        z.extend_from_slice(&(payload.len() as u32).to_le_bytes()); // compressed size
+        z.extend_from_slice(&(payload.len() as u32).to_le_bytes()); // uncompressed size
+        z.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        z.extend_from_slice(&0u16.to_le_bytes()); // extra len
+        z.extend_from_slice(name);
+        z.extend_from_slice(payload);
+        z.extend_from_slice(trailer);
+        z
+    }
+
+    #[test]
+    fn a_stored_member_stops_at_its_own_length() {
+        let z = stored_zip(b"<a> <b> <c> .\n", b"PK\x01\x02 central directory bytes");
+        assert_eq!(zip_single_member(&z).expect("extract"), b"<a> <b> <c> .\n");
+    }
+
+    /// A half-finished download, or a proxy's error page with a zip magic number, must be
+    /// reported rather than indexed past the end of.
+    #[test]
+    fn a_truncated_archive_is_an_error_not_a_panic() {
+        let z = stored_zip(b"payload", b"");
+        for cut in [4, 20, 30, z.len() - 1] {
+            let err = zip_single_member(&z[..cut]);
+            assert!(err.is_err(), "truncated at {cut} bytes must not extract");
+        }
+        assert!(zip_single_member(b"not a zip at all").is_err());
     }
 }
