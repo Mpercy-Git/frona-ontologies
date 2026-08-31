@@ -1,0 +1,45 @@
+name: ci
+
+# Everything that can be checked without touching the network, on every change rather
+# than only when someone cuts a release. This pipeline fails *silently* — a broken step
+# emits a well-formed file with quietly missing content — so the guards in `tests/` are
+# the thing standing between a refactor and a plausible-looking artifact, and they are
+# worth nothing if they only run at release time.
+#
+# The three `verify:*` tasks are deliberately NOT here. Each needs a populated `dist/`,
+# which means fetching ~40 MB of pinned upstream sources plus WordNet: too slow to sit on
+# every push, and it would make a red build mean "GitHub was unreachable" as often as it
+# means "something broke". They belong to the release job, after a build has happened.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to a branch makes the first run's answer irrelevant before it finishes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Toolchain comes from mise.toml, so CI and a developer's machine build with the
+      # same rustc. `@stable` here would drift from the pinned version the moment one
+      # released, and an output difference traced to a compiler is not a debugging
+      # session anyone wants.
+      - uses: jdx/mise-action@v3
+
+      - uses: Swatinem/rust-cache@v2
+
+      # `lint` depends on `fmt:check`, so unformatted code fails here too.
+      - name: Format and lint
+        run: mise run lint
+
+      - name: Guards
+        run: mise run test
