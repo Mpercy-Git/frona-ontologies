@@ -142,10 +142,8 @@ fn build(args: &[String]) -> Result<()> {
         let files = r.fetch(&cache)?;
 
         let mut g = Graph::default();
-        let mut triples = 0usize;
         for f in &files {
             let n = g.absorb_file(f)?;
-            triples += n;
             println!("    parse   {:<34}{n:>9} triples", f.file_name().unwrap().to_string_lossy());
         }
         g.decompose_disjointness();
@@ -223,7 +221,6 @@ fn build(args: &[String]) -> Result<()> {
         }
 
         built.push(Loaded { recipe: r, graph: g });
-        let _ = triples;
     }
 
     // Imported here rather than per source: a contradiction between two vocabularies is

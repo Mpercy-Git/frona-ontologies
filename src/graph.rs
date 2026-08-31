@@ -68,6 +68,14 @@ pub struct Graph {
     pub equivalent: BTreeSet<(Id, Id)>,
     pub inverse: Vec<(Id, Id)>,
 
+    /// Incremented per [`Self::absorb_reader`] call, and prefixed onto every blank node
+    /// label so two files cannot share one. Blank labels are **file-scoped** by the RDF
+    /// spec, so `_:b0` in one source and `_:b0` in the next are different nodes; interning
+    /// them under one name silently spliced the second file's `unionOf` list onto the
+    /// first file's disjointness, losing real pairs and inventing wrong ones with the
+    /// count unchanged — which `expect_disjoint_pairs` cannot see.
+    blank_scope: u32,
+
     // Build-only scaffolding for `disjointWith [ unionOf (…) ]`; dropped after decomposing.
     union_of: HashMap<Id, Id>,
     first: HashMap<Id, Id>,
@@ -169,31 +177,42 @@ impl Graph {
 
     /// Streaming variant — no decompressed copy of the file is ever held.
     pub fn absorb_reader(&mut self, r: impl std::io::Read, fmt: RdfFormat) -> Result<usize> {
+        self.blank_scope += 1;
+        let scope = self.blank_scope;
         let mut n = 0usize;
         for q in RdfParser::from_format(fmt).for_reader(r) {
             let q = q?;
             n += 1;
             let s = match &q.subject {
                 NamedOrBlankNode::NamedNode(x) => self.intern(x.as_str()),
-                NamedOrBlankNode::BlankNode(b) => self.intern(&format!("_:{}", b.as_str())),
+                NamedOrBlankNode::BlankNode(b) => self.intern_blank(scope, b.as_str()),
             };
-            let p = q.predicate.as_str().to_string();
+            // Borrowed from the parsed quad rather than copied: this runs on every triple
+            // of every source, and a `String` per predicate was 341k allocations for
+            // nothing — the same cost `rdf`'s spelled-out constants exist to avoid.
+            let p = q.predicate.as_str();
             match &q.object {
                 Term::Literal(l) => {
                     let v = l.value().to_string();
-                    self.absorb_literal(s, &p, &v)
+                    self.absorb_literal(s, p, &v)
                 }
                 Term::NamedNode(x) => {
                     let o = self.intern(x.as_str());
-                    self.absorb(s, &p, o, true)
+                    self.absorb(s, p, o, true)
                 }
                 Term::BlankNode(b) => {
-                    let o = self.intern(&format!("_:{}", b.as_str()));
-                    self.absorb(s, &p, o, false)
+                    let o = self.intern_blank(scope, b.as_str());
+                    self.absorb(s, p, o, false)
                 }
             }
         }
         Ok(n)
+    }
+
+    /// A blank node label is scoped to the file that states it, so the same `_:b0` in two
+    /// sources must intern to two terms.
+    fn intern_blank(&mut self, scope: u32, label: &str) -> Id {
+        self.intern(&format!("_:{scope}:{label}"))
     }
 
     fn absorb(&mut self, s: Id, p: &str, o: Id, named: bool) {
@@ -308,14 +327,6 @@ impl Graph {
         }
     }
 
-    /// Closing upward rather than re-parenting is what keeps the interior of a taxonomy.
-    /// A lexical filter judges each term alone and deleted `medical school graduate` while
-    /// keeping its children, leaving orphans to be re-parented onto whatever ancestor
-    /// happened to pass. Here an interior class survives because something below it does.
-    /// Walks equivalence as well as `subClassOf`. Equivalence is subsumption both ways
-    /// (`scm-eqc1`), so a reasoner reaches through it and a plain parent walk does not:
-    /// KBpedia states `kko:Generals ≡ kko:SuperTypes`, and omitting this missed 26,544
-    /// subsumptions against a materialised closure.
     /// Every term that carries an axiom — a disjointness, an equivalence, an inverse.
     ///
     /// Seeds on the same footing as any lexical selection: a term is *in* an axiom because
@@ -476,6 +487,15 @@ impl Graph {
         eq
     }
 
+    /// Closing upward rather than re-parenting is what keeps the interior of a taxonomy.
+    /// A lexical filter judges each term alone and deleted `medical school graduate` while
+    /// keeping its children, leaving orphans to be re-parented onto whatever ancestor
+    /// happened to pass. Here an interior class survives because something below it does.
+    ///
+    /// Walks equivalence as well as `subClassOf`. Equivalence is subsumption both ways
+    /// (`scm-eqc1`), so a reasoner reaches through it and a plain parent walk does not:
+    /// KBpedia states `kko:Generals ≡ kko:SuperTypes`, and omitting this missed 26,544
+    /// subsumptions against a materialised closure.
     pub fn ancestor_closure(&self, seeds: &HashSet<Id>) -> HashSet<Id> {
         self.ancestor_closure_with(seeds, &self.equivalence_index())
     }

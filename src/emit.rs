@@ -89,6 +89,12 @@ fn split_iri(iri: &str) -> Option<(&str, &str)> {
     if !local.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')) {
         return None;
     }
+    // A `.` is legal *inside* a local name but not at the end of one, where Turtle reads it
+    // as the end of the statement: `ns0:Corp.` emits a file that will not re-parse, and
+    // nothing between here and a consumer's loader reads the bytes back.
+    if local.ends_with('.') {
+        return None;
+    }
     Some((ns, local))
 }
 

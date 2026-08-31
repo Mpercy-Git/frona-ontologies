@@ -28,16 +28,21 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Format and lint
-        run: mise run lint
-
-      # Before anything is fetched: a broken decomposition should fail here, not after
-      # downloading 40 MB and emitting a plausible-looking release.
-      - name: Guards
-        run: mise run test
-
-      - name: Build artifacts
-        run: mise run build
+      # The whole pre-release pipeline in one task: guards, lint, build, and then the
+      # three checks that read what was actually produced — every count in metadata.json
+      # re-derived from the published bytes, the extractor held to an OWL 2 RL reasoner in
+      # both directions, and 1,000 sampled projections reasoned against the whole
+      # catalogue. Those three used to run only when someone remembered to; a release is
+      # exactly the moment they are worth waiting for, so nothing is published that has
+      # not been through all of them.
+      #
+      # `--jobs 1` because `verify` names test, lint and build as independent dependencies
+      # and mise runs tasks in parallel by default (4 of them), which would put three
+      # cargo invocations on one target directory at once. Serialised, they run in the
+      # order `verify` lists them — guards, lint, then build — so a broken decomposition
+      # still fails before 40 MB is downloaded rather than after.
+      - name: Build and verify
+        run: mise run verify --jobs 1
 
       - name: Summary
         run: |

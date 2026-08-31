@@ -298,3 +298,66 @@ fn an_alignment_is_judged_by_what_lies_beneath_it() {
     let (eq, dj, ch) = (g.equivalence_index(), g.disjointness_index(), g.children_index());
     assert!(g.edge_is_safe(fresh, place, &eq, &dj, &ch), "an unconstrained edge is allowed");
 }
+
+/// Blank node labels are scoped to the file that states them. KBpedia is two `.n3` files
+/// absorbed into one graph, and any source that spells its blank nodes out (`_:b0`, as
+/// N-Triples and `rdf:nodeID` do) shares those names with the next file in the list.
+/// Interning them under one name splices the second file's `unionOf` list onto the first
+/// file's `disjointWith`: real pairs vanish, wrong ones appear, and the *count* can be
+/// unchanged — so `expect_disjoint_pairs`, the guard built for exactly this failure, does
+/// not see it.
+#[test]
+fn blank_labels_are_scoped_to_the_file_that_states_them() {
+    let union = |subject: &str, member: &str| {
+        format!(
+            "<{subject}> <http://www.w3.org/2002/07/owl#disjointWith> _:b0 .\n\
+             _:b0 <http://www.w3.org/2002/07/owl#unionOf> _:l0 .\n\
+             _:l0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <{member}> .\n\
+             _:l0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> \
+             <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .\n"
+        )
+    };
+    let mut g = Graph::default();
+    // Two files, each with its own `_:b0` and `_:l0` — the same names, different nodes.
+    g.absorb_bytes(
+        union("http://a.example/A", "http://a.example/B").as_bytes(),
+        RdfFormat::NTriples,
+    )
+    .expect("parse file one");
+    g.absorb_bytes(
+        union("http://b.example/X", "http://b.example/Y").as_bytes(),
+        RdfFormat::NTriples,
+    )
+    .expect("parse file two");
+    g.decompose_disjointness();
+
+    let pairs: HashSet<(String, String)> =
+        g.disjoint.iter().map(|&(a, b)| (g.iri(a).to_string(), g.iri(b).to_string())).collect();
+    let has = |a: &str, b: &str| {
+        pairs.contains(&(a.to_string(), b.to_string()))
+            || pairs.contains(&(b.to_string(), a.to_string()))
+    };
+    assert!(has("http://a.example/A", "http://a.example/B"), "file one's own pair: {pairs:?}");
+    assert!(has("http://b.example/X", "http://b.example/Y"), "file two's own pair: {pairs:?}");
+    assert_eq!(pairs.len(), 2, "no pair crosses the two files: {pairs:?}");
+}
+
+/// A `.` is legal inside a Turtle local name but not at the end of one, where the parser
+/// reads it as the end of the statement. Emitting `ns0:Corp.` produces an artifact that
+/// does not re-parse, and the build never reads its own bytes back — the first thing to
+/// notice would be a consumer's loader.
+#[test]
+fn a_local_name_ending_in_a_dot_still_emits_parseable_turtle() {
+    let mut g = Graph::default();
+    g.absorb_bytes(
+        b"<http://example.org/Corp.> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> \
+          <http://www.w3.org/2002/07/owl#Class> .\n",
+        RdfFormat::NTriples,
+    )
+    .expect("parse fixture");
+    let (ttl, _) = emit::turtle(&g, &fixture_recipe());
+    RdfParser::from_format(RdfFormat::Turtle)
+        .for_reader(ttl.as_bytes())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap_or_else(|e| panic!("emitted Turtle must re-parse: {e}\n{ttl}"));
+}
