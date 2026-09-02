@@ -42,8 +42,21 @@ run = "cargo check --all-targets"
 
 [tasks.verify]
 description = "What CI runs before a release: guards, lint, build, then check the output"
-depends = ["test", "lint", "build"]
+# Every step is named in the script body rather than split between `depends` and here.
+# `depends` entries run in parallel (four at a time by default), which would put three
+# cargo invocations on one target directory at once and would let a broken decomposition
+# surface only after the build had already fetched ~40 MB. Listed below they run in
+# order — guards, lint, build, then the three checks that read what was produced — and
+# the serialisation travels with the task, so no caller has to remember a flag to get it.
+#
+# That last part is not incidental. `mise run verify --jobs 1` does not serialise
+# anything: after the task name mise treats `--jobs 1` as an argument *to the task* and
+# appends it to the final command of this script, from where it was forwarded past `--`
+# into libtest, which has no such option. That is what failed the first release.
 run = """
+mise run test
+mise run lint
+mise run build
 mise run verify:artifacts
 mise run verify:reasoner
 mise run verify:e2e

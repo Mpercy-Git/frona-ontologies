@@ -36,13 +36,13 @@ jobs:
       # exactly the moment they are worth waiting for, so nothing is published that has
       # not been through all of them.
       #
-      # `--jobs 1` because `verify` names test, lint and build as independent dependencies
-      # and mise runs tasks in parallel by default (4 of them), which would put three
-      # cargo invocations on one target directory at once. Serialised, they run in the
-      # order `verify` lists them — guards, lint, then build — so a broken decomposition
-      # still fails before 40 MB is downloaded rather than after.
+      # No flag here on purpose: `verify` runs its steps in order from its own script
+      # body, so the serialisation it needs belongs to the task rather than the caller.
+      # An earlier `mise run verify --jobs 1` did not serialise anything — after the task
+      # name mise passes arguments *to the task*, and this one travelled down to libtest,
+      # which rejected it and failed the release after the build had already succeeded.
       - name: Build and verify
-        run: mise run verify --jobs 1
+        run: mise run verify
 
       - name: Summary
         run: |
